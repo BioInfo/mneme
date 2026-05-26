@@ -129,7 +129,12 @@ python -m session_recall.cli search "query" --mode hybrid
 |------|--------------|----------|
 | `vector` (default) | Semantic similarity over embeddings | Conceptual recall, paraphrased queries |
 | `fts` | BM25 keyword search | Exact terms, error strings, function names |
-| `hybrid` | Vector + FTS fused with RRF reranking | Best overall quality |
+| `hybrid` | Vector + FTS fused with RRF reranking | Best non-reranked quality / low latency |
+| `rerank` | Hybrid recall + local cross-encoder reorder | **Best quality** (see [benchmark](eval/BENCHMARK.md)) |
+
+On a 27-query benchmark over a real ~138K-chunk index, `rerank` is the strongest
+mode (R@1 0.815, MRR 0.864) and runs fully locally. It costs a one-time ~560MB
+model download and added per-query latency. Full numbers: [eval/BENCHMARK.md](eval/BENCHMARK.md).
 
 ### `stats` — Show statistics
 

@@ -37,7 +37,7 @@ from session_recall.search import search_and_group  # noqa: E402
 EVAL_DIR = Path(__file__).resolve().parent
 DEFAULT_QUERYSET = EVAL_DIR / "queries.jsonl"
 RESULTS_DIR = EVAL_DIR / "results"
-MODES = ("vector", "fts", "hybrid")
+MODES = ("vector", "fts", "hybrid", "rerank")
 RECALL_KS = (1, 5, 10)
 
 

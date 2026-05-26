@@ -30,3 +30,11 @@ search:
   default_limit: 10
   group_by_session: true
   include_similarity_score: true
+
+# Reranking (used by --mode rerank): a local cross-encoder reorders the
+# top candidates from hybrid retrieval. Runs fully locally, downloads on
+# first use. Optional — defaults below apply if this section is omitted.
+rerank:
+  model: "BAAI/bge-reranker-v2-m3"  # strong, ~560MB. Lighter: cross-encoder/ms-marco-MiniLM-L-6-v2 (~80MB)
+  candidates: 50                    # how many to retrieve before reranking
+  device: "cpu"                     # "cpu", "cuda", or "mps" (Mac Metal)

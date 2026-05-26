@@ -8,6 +8,7 @@ from typing import List
 from .config import load_config
 from .embeddings import EmbeddingModel
 from .indexer import SessionVectorDB
+from .rerank import CrossEncoderReranker
 
 
 @dataclass
@@ -48,7 +49,9 @@ def search_sessions(
         query: Natural language search query
         limit: Maximum number of chunk results
         config_path: Path to config file
-        mode: Search mode - "vector" (semantic), "fts" (keyword/BM25), or "hybrid" (both + RRF)
+        mode: Search mode - "vector" (semantic), "fts" (keyword/BM25),
+            "hybrid" (both + RRF), or "rerank" (hybrid recall + local
+            cross-encoder reranking)
 
     Returns:
         List of SearchResult objects ordered by relevance
@@ -91,6 +94,30 @@ def search_sessions(
                 similarity=r.get("_relevance_score", 0),
             )
             for r in results
+        ]
+
+    if mode == "rerank":
+        # Stage 1: wide hybrid recall. Stage 2: local cross-encoder reorders.
+        rcfg = config.get("rerank", {})
+        model_name = rcfg.get("model", "BAAI/bge-reranker-v2-m3")
+        n_candidates = max(rcfg.get("candidates", 50), limit)
+        device = rcfg.get("device") or config["embeddings"].get("device")
+        candidates = db.search_hybrid(
+            query, query_vector.tolist(), limit=n_candidates
+        )
+        reranker = CrossEncoderReranker(model_name, device=device)
+        reranked = reranker.rerank(query, candidates, top_k=limit)
+        return [
+            SearchResult(
+                session_id=r.get("session_id", ""),
+                session_file=r.get("session_file", ""),
+                project_path=r.get("project_path", ""),
+                timestamp=r.get("timestamp", datetime.now()),
+                chunk_type=r.get("chunk_type", ""),
+                content=r.get("content", ""),
+                similarity=r.get("rerank_score", 0),
+            )
+            for r in reranked
         ]
 
     # Default: vector search

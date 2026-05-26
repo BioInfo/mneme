@@ -71,9 +71,9 @@ Examples:
         "--mode",
         "-m",
         type=str,
-        choices=["vector", "fts", "hybrid"],
+        choices=["vector", "fts", "hybrid", "rerank"],
         default="vector",
-        help="Search mode: vector (semantic), fts (keyword/BM25), hybrid (both + RRF reranking). Default: vector",
+        help="Search mode: vector (semantic), fts (keyword/BM25), hybrid (both + RRF), rerank (hybrid + local cross-encoder). Default: vector",
     )
 
     # Stats command
