@@ -1,0 +1,264 @@
+"""Search API for Session Recall."""
+
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import List
+
+from .config import load_config
+from .embeddings import EmbeddingModel
+from .indexer import SessionVectorDB
+
+
+@dataclass
+class SearchResult:
+    """A single search result."""
+
+    session_id: str
+    session_file: str
+    project_path: str
+    timestamp: datetime
+    chunk_type: str
+    content: str
+    similarity: float
+
+
+@dataclass
+class SessionMatch:
+    """A session with matching chunks."""
+
+    session_id: str
+    session_file: str
+    project_path: str
+    timestamp: datetime
+    best_similarity: float
+    summary: str | None
+    chunks: List[SearchResult]
+
+
+def search_sessions(
+    query: str,
+    limit: int = 10,
+    config_path: str | None = None,
+    mode: str = "vector",
+) -> List[SearchResult]:
+    """Search for sessions matching the query.
+
+    Args:
+        query: Natural language search query
+        limit: Maximum number of chunk results
+        config_path: Path to config file
+        mode: Search mode - "vector" (semantic), "fts" (keyword/BM25), or "hybrid" (both + RRF)
+
+    Returns:
+        List of SearchResult objects ordered by relevance
+    """
+    config = load_config(config_path)
+    db = SessionVectorDB(config["vectordb"]["path"])
+
+    if mode == "fts":
+        results = db.search_fts(query, limit=limit)
+        return [
+            SearchResult(
+                session_id=r.get("session_id", ""),
+                session_file=r.get("session_file", ""),
+                project_path=r.get("project_path", ""),
+                timestamp=r.get("timestamp", datetime.now()),
+                chunk_type=r.get("chunk_type", ""),
+                content=r.get("content", ""),
+                similarity=r.get("_score", 0),
+            )
+            for r in results
+        ]
+
+    # Vector or hybrid mode needs embeddings
+    embedder = EmbeddingModel(
+        model_name=config["embeddings"]["model"],
+        device=config["embeddings"].get("device"),
+    )
+    query_vector = embedder.embed_query(query)
+
+    if mode == "hybrid":
+        results = db.search_hybrid(query, query_vector.tolist(), limit=limit)
+        return [
+            SearchResult(
+                session_id=r.get("session_id", ""),
+                session_file=r.get("session_file", ""),
+                project_path=r.get("project_path", ""),
+                timestamp=r.get("timestamp", datetime.now()),
+                chunk_type=r.get("chunk_type", ""),
+                content=r.get("content", ""),
+                similarity=r.get("_relevance_score", 0),
+            )
+            for r in results
+        ]
+
+    # Default: vector search
+    results = db.search(query_vector.tolist(), limit=limit)
+    return [
+        SearchResult(
+            session_id=r.get("session_id", ""),
+            session_file=r.get("session_file", ""),
+            project_path=r.get("project_path", ""),
+            timestamp=r.get("timestamp", datetime.now()),
+            chunk_type=r.get("chunk_type", ""),
+            content=r.get("content", ""),
+            similarity=1 - r.get("_distance", 1),
+        )
+        for r in results
+    ]
+
+
+def search_and_group(
+    query: str,
+    limit: int = 20,
+    max_sessions: int = 5,
+    config_path: str | None = None,
+    mode: str = "vector",
+) -> List[SessionMatch]:
+    """Search and group results by session.
+
+    Args:
+        query: Natural language search query
+        limit: Maximum number of chunk results to search
+        max_sessions: Maximum number of sessions to return
+        config_path: Path to config file
+        mode: Search mode - "vector", "fts", or "hybrid"
+
+    Returns:
+        List of SessionMatch objects with grouped chunks
+    """
+    results = search_sessions(query, limit=limit, config_path=config_path, mode=mode)
+
+    if not results:
+        return []
+
+    # Group by session
+    sessions: dict[str, SessionMatch] = {}
+
+    for r in results:
+        key = r.session_id or r.session_file
+
+        if key not in sessions:
+            sessions[key] = SessionMatch(
+                session_id=r.session_id,
+                session_file=r.session_file,
+                project_path=r.project_path,
+                timestamp=r.timestamp,
+                best_similarity=r.similarity,
+                summary=None,
+                chunks=[],
+            )
+
+        match = sessions[key]
+        match.chunks.append(r)
+
+        # Track best similarity
+        if r.similarity > match.best_similarity:
+            match.best_similarity = r.similarity
+
+        # Capture summary if found
+        if r.chunk_type == "summary" and not match.summary:
+            match.summary = r.content
+
+    # Sort by best similarity and limit
+    sorted_sessions = sorted(
+        sessions.values(),
+        key=lambda s: s.best_similarity,
+        reverse=True,
+    )[:max_sessions]
+
+    return sorted_sessions
+
+
+def format_results(results: List[SearchResult], max_content: int = 200) -> str:
+    """Format search results for display.
+
+    Args:
+        results: List of SearchResult objects
+        max_content: Maximum content length per result
+
+    Returns:
+        Formatted string for display
+    """
+    if not results:
+        return "No matching sessions found."
+
+    lines = ["**Search Results**", ""]
+
+    for r in results:
+        # Format timestamp
+        if isinstance(r.timestamp, datetime):
+            date_str = r.timestamp.strftime("%Y-%m-%d %H:%M")
+        else:
+            date_str = str(r.timestamp)[:16]
+
+        # Truncate content
+        content = r.content
+        if len(content) > max_content:
+            content = content[:max_content] + "..."
+
+        # Format project path nicely (replace home directory with ~)
+        project = r.project_path
+        home = str(Path.home())
+        if project.startswith(home):
+            project = "~" + project[len(home):]
+
+        score_str = f"{r.similarity:.2f}" if r.similarity <= 1 else f"{r.similarity:.1f}"
+        lines.append(f"**{r.chunk_type}** ({score_str}) - {date_str}")
+        lines.append(f"Project: {project}")
+        lines.append(f"> {content}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def format_sessions(sessions: List[SessionMatch], max_content: int = 300) -> str:
+    """Format grouped session results for display.
+
+    Args:
+        sessions: List of SessionMatch objects
+        max_content: Maximum content length per session
+
+    Returns:
+        Formatted string for display
+    """
+    if not sessions:
+        return "No matching sessions found."
+
+    lines = []
+
+    for i, session in enumerate(sessions, 1):
+        # Format timestamp
+        if isinstance(session.timestamp, datetime):
+            date_str = session.timestamp.strftime("%Y-%m-%d")
+        else:
+            date_str = str(session.timestamp)[:10]
+
+        # Format project path (replace home directory with ~)
+        project = session.project_path
+        home = str(Path.home())
+        if project.startswith(home):
+            project = "~" + project[len(home):]
+
+        lines.append(f"### {i}. {date_str} - {project}")
+        lines.append(f"Similarity: {session.best_similarity:.2f}")
+
+        # Show summary or best chunk
+        if session.summary:
+            summary = session.summary
+            if len(summary) > max_content:
+                summary = summary[:max_content] + "..."
+            lines.append(f"> {summary}")
+        elif session.chunks:
+            # Use best chunk as summary
+            best_chunk = max(session.chunks, key=lambda c: c.similarity)
+            content = best_chunk.content
+            if len(content) > max_content:
+                content = content[:max_content] + "..."
+            lines.append(f"> {content}")
+
+        lines.append(f"Session: `{session.session_id[:8] if session.session_id else 'N/A'}...`")
+        lines.append("")
+
+    return "\n".join(lines)

@@ -1,0 +1,32 @@
+# Session Recall Configuration
+# Copy this file to config.yaml and adjust paths for your system
+
+# Session file locations
+sources:
+  - path: "~/.claude/projects"
+    name: "local"
+
+# Vector database location
+vectordb:
+  path: "./data/lance"
+
+# Embedding model
+embeddings:
+  model: "nomic-ai/nomic-embed-text-v1.5"
+  dimension: 768
+  device: "cpu"  # Options: "cpu", "cuda", "mps" (Mac Metal)
+
+# Indexing settings
+indexing:
+  batch_size: 100
+  min_content_length: 20      # Skip very short content
+  max_content_length: 2000    # Truncate very long content
+  skip_agent_sessions: false  # Include agent-*.jsonl files
+  skip_patterns:              # Files to ignore
+    - "*.tmp"
+
+# Search settings
+search:
+  default_limit: 10
+  group_by_session: true
+  include_similarity_score: true

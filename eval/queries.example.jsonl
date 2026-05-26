@@ -1,0 +1,3 @@
+{"query": "what did we do with the vector database migration", "session_id": "REPLACE-with-a-real-session-id", "_hint": "example row - copy this file to queries.jsonl and fill in real session ids from your own index"}
+{"query": "when did we set up the authentication refactor", "session_id": "REPLACE-with-a-real-session-id", "_hint": "the _hint field is optional and ignored by run_eval.py"}
+{"query": "find the session where we debugged the failing CI pipeline", "session_id": "REPLACE-with-a-real-session-id", "_hint": "aim for 30-50 rows spanning different topics for a stable signal"}

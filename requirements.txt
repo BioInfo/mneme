@@ -1,0 +1,16 @@
+# Session Recall Dependencies
+
+# Vector database
+lancedb>=0.4.0
+pyarrow>=14.0.0
+
+# Embeddings
+sentence-transformers>=2.2.0
+torch>=2.0.0
+
+# Utilities
+pyyaml>=6.0
+tqdm>=4.65.0
+
+# Optional: for faster inference
+# accelerate>=0.24.0
