@@ -85,10 +85,20 @@ def main() -> None:
     ap.add_argument("--base-config", default=str(ROOT / "config.yaml"))
     ap.add_argument("--modes", nargs="+", default=["vector", "fts", "hybrid", "rerank"])
     ap.add_argument("--k", type=int, default=10)
+    ap.add_argument(
+        "--mac-only", action="store_true",
+        help="Drop optional sources (e.g. a remote mount) so the index is "
+             "exactly the local corpus — guarantees an apples-to-apples compare.",
+    )
     args = ap.parse_args()
 
     # 1. Derive an isolated config from the live one (same sources, new db + embedder).
     base = yaml.safe_load(Path(args.base_config).read_text())
+    if args.mac_only:
+        kept = [s for s in base.get("sources", []) if not s.get("optional")]
+        dropped = [s.get("name", s.get("path")) for s in base.get("sources", []) if s.get("optional")]
+        base["sources"] = kept
+        print(f"[ab] mac-only: kept {[s.get('name') for s in kept]}, dropped {dropped}")
     work = ROOT / "data" / f"ab-{args.label}"
     work.mkdir(parents=True, exist_ok=True)
     base["vectordb"]["path"] = str(work / "lance")
