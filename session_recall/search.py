@@ -57,7 +57,9 @@ def search_sessions(
         List of SearchResult objects ordered by relevance
     """
     config = load_config(config_path)
-    db = SessionVectorDB(config["vectordb"]["path"])
+    emb_cfg = config["embeddings"]
+    dimension = emb_cfg.get("dimension", 768)
+    db = SessionVectorDB(config["vectordb"]["path"], dimension=dimension)
 
     if mode == "fts":
         results = db.search_fts(query, limit=limit)
@@ -76,8 +78,11 @@ def search_sessions(
 
     # Vector or hybrid mode needs embeddings
     embedder = EmbeddingModel(
-        model_name=config["embeddings"]["model"],
-        device=config["embeddings"].get("device"),
+        model_name=emb_cfg["model"],
+        device=emb_cfg.get("device"),
+        dimension=dimension,
+        doc_prefix=emb_cfg.get("doc_prefix", "search_document: "),
+        query_prefix=emb_cfg.get("query_prefix", "search_query: "),
     )
     query_vector = embedder.embed_query(query)
 

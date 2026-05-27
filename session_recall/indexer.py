@@ -22,15 +22,17 @@ class SessionVectorDB:
 
     TABLE_NAME = "session_chunks"
 
-    def __init__(self, db_path: str):
+    def __init__(self, db_path: str, dimension: int = 768):
         """Initialize the vector database.
 
         Args:
             db_path: Path to the LanceDB database directory
+            dimension: Embedding vector dimensionality (must match the embedder).
         """
         self.db_path = Path(db_path)
         self.db_path.mkdir(parents=True, exist_ok=True)
         self.db = lancedb.connect(str(self.db_path))
+        self.dimension = dimension
         self._table = None
 
     def _get_schema(self) -> pa.Schema:
@@ -43,7 +45,7 @@ class SessionVectorDB:
             pa.field("timestamp", pa.timestamp("us", tz="UTC")),
             pa.field("chunk_type", pa.string()),
             pa.field("content", pa.string()),
-            pa.field("vector", pa.list_(pa.float32(), 768)),
+            pa.field("vector", pa.list_(pa.float32(), self.dimension)),
         ])
 
     def _ensure_table(self):
@@ -293,15 +295,20 @@ def run_indexer(
         source_path: Specific source path to index
     """
     config = load_config(config_path)
+    emb_cfg = config["embeddings"]
+    dimension = emb_cfg.get("dimension", 768)
 
     # Initialize components
-    db = SessionVectorDB(config["vectordb"]["path"])
+    db = SessionVectorDB(config["vectordb"]["path"], dimension=dimension)
     state = IndexState(
         str(Path(config["vectordb"]["path"]).parent / "index_state.json")
     )
     embedder = EmbeddingModel(
-        model_name=config["embeddings"]["model"],
-        device=config["embeddings"].get("device"),
+        model_name=emb_cfg["model"],
+        device=emb_cfg.get("device"),
+        dimension=dimension,
+        doc_prefix=emb_cfg.get("doc_prefix", "search_document: "),
+        query_prefix=emb_cfg.get("query_prefix", "search_query: "),
     )
 
     indexing_config = config.get("indexing", {})

@@ -66,16 +66,22 @@ def load_queryset(path: Path) -> list[dict]:
     return rows
 
 
-def rank_of_target(query: str, target: str, mode: str, k: int) -> int | None:
+def rank_of_target(
+    query: str, target: str, mode: str, k: int, config_path: str | None = None
+) -> int | None:
     """Return the 1-based rank of the target session in the top-k, or None."""
-    sessions = search_and_group(query, limit=max(k * 4, 20), max_sessions=k, mode=mode)
+    sessions = search_and_group(
+        query, limit=max(k * 4, 20), max_sessions=k, mode=mode, config_path=config_path
+    )
     for rank, s in enumerate(sessions, 1):
         if s.session_id == target:
             return rank
     return None
 
 
-def score_mode(queryset: list[dict], mode: str, k: int) -> dict:
+def score_mode(
+    queryset: list[dict], mode: str, k: int, config_path: str | None = None
+) -> dict:
     """Run every query in one mode and aggregate recall@k + MRR."""
     n = len(queryset)
     hits_at = {kk: 0 for kk in RECALL_KS if kk <= k}
@@ -83,7 +89,7 @@ def score_mode(queryset: list[dict], mode: str, k: int) -> dict:
     misses: list[str] = []
 
     for row in queryset:
-        rank = rank_of_target(row["query"], row["session_id"], mode, k)
+        rank = rank_of_target(row["query"], row["session_id"], mode, k, config_path)
         if rank is None:
             misses.append(row["query"])
             continue
@@ -127,15 +133,25 @@ def main() -> None:
     ap.add_argument("--k", type=int, default=10, help="Retrieval depth (default 10).")
     ap.add_argument("--save", action="store_true", help="Write results to eval/results/.")
     ap.add_argument("--json", action="store_true", help="Emit JSON instead of a table.")
+    ap.add_argument(
+        "--config", type=str, default=None,
+        help="Path to an alternate config (e.g. an A/B index). Default: config.yaml.",
+    )
+    ap.add_argument(
+        "--label", type=str, default=None,
+        help="Tag recorded in saved results (e.g. 'bge-m3').",
+    )
     args = ap.parse_args()
 
     queryset = load_queryset(args.queryset)
-    results = [score_mode(queryset, mode, args.k) for mode in args.modes]
+    results = [score_mode(queryset, mode, args.k, args.config) for mode in args.modes]
 
     payload = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "queryset": str(args.queryset.name),
         "k": args.k,
+        "config": args.config or "config.yaml",
+        "label": args.label,
         "results": results,
     }
 
@@ -147,9 +163,10 @@ def main() -> None:
     if args.save:
         RESULTS_DIR.mkdir(exist_ok=True)
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        out = RESULTS_DIR / f"{stamp}.json"
+        tag = f"-{args.label}" if args.label else ""
+        out = RESULTS_DIR / f"{stamp}{tag}.json"
         out.write_text(json.dumps(payload, indent=2))
-        print(f"\nsaved baseline -> {out}")
+        print(f"\nsaved results -> {out}")
 
 
 if __name__ == "__main__":

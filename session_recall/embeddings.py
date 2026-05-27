@@ -11,17 +11,26 @@ class EmbeddingModel:
         self,
         model_name: str = "nomic-ai/nomic-embed-text-v1.5",
         device: str | None = None,
+        dimension: int = 768,
+        doc_prefix: str = "search_document: ",
+        query_prefix: str = "search_query: ",
     ):
         """Initialize the embedding model.
 
         Args:
             model_name: HuggingFace model name
             device: Device to use ('mps', 'cuda', 'cpu'). Auto-detects if None.
+            dimension: Embedding dimensionality (must match the model).
+            doc_prefix: Instruction prefix for documents. nomic needs
+                "search_document: "; bge-m3 and many others are prefix-free ("").
+            query_prefix: Instruction prefix for queries (nomic: "search_query: ").
         """
         self.model_name = model_name
         self._model = None
         self._device = device
-        self.dimension = 768
+        self.dimension = dimension
+        self.doc_prefix = doc_prefix
+        self.query_prefix = query_prefix
 
     @property
     def model(self):
@@ -66,8 +75,8 @@ class EmbeddingModel:
         if not texts:
             return np.array([])
 
-        # Nomic requires task prefix for better retrieval
-        prefixed = [f"search_document: {t}" for t in texts]
+        # Apply the model's document instruction prefix (empty for bge-m3 etc.)
+        prefixed = [f"{self.doc_prefix}{t}" for t in texts]
         embeddings = self.model.encode(
             prefixed,
             batch_size=batch_size,
@@ -85,7 +94,7 @@ class EmbeddingModel:
         Returns:
             NumPy array of shape (dimension,)
         """
-        # Nomic uses different prefix for queries
-        prefixed = f"search_query: {query}"
+        # Apply the model's query instruction prefix (empty for bge-m3 etc.)
+        prefixed = f"{self.query_prefix}{query}"
         embedding = self.model.encode([prefixed], convert_to_numpy=True)
         return embedding[0]

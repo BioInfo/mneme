@@ -56,6 +56,12 @@ index_state.json
 eval/queries.jsonl
 eval/results/
 
+# Experiment artifacts (A/B logs); isolated A/B indexes live under data/ (ignored)
+experiments/logs/
+
+# Machine-specific overnight launchd wrappers (personal ops glue, not shareable)
+experiments/run_*_overnight.sh
+
 # Config with local paths (users should copy from example)
 config.yaml
 
