@@ -1,8 +1,8 @@
-# Session Recall - Technical Design Document
+# Mneme - Technical Design Document
 
 ## Overview
 
-This document details the technical implementation of the Session Recall system for semantic search across Claude Code session history.
+This document details the technical implementation of the Mneme system for semantic search across Claude Code session history.
 
 ---
 
@@ -19,7 +19,7 @@ This document details the technical implementation of the Session Recall system 
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                         Indexer                                  │
-│  ~/apps/claude-code/session-recall/indexer.py                   │
+│  ~/apps/claude-code/mneme/indexer.py                   │
 ├─────────────────────────────────────────────────────────────────┤
 │  1. Discover session files                                       │
 │  2. Parse JSONL, extract content                                 │
@@ -31,7 +31,7 @@ This document details the technical implementation of the Session Recall system 
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                       Vector Database                            │
-│  ~/apps/claude-code/session-recall/data/lance/                  │
+│  ~/apps/claude-code/mneme/data/lance/                  │
 ├─────────────────────────────────────────────────────────────────┤
 │  Collection: session_chunks                                      │
 │  Schema: id, session_id, project, timestamp, type, content, vec │
@@ -40,7 +40,7 @@ This document details the technical implementation of the Session Recall system 
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                       Search Module                              │
-│  ~/apps/claude-code/session-recall/search.py                    │
+│  ~/apps/claude-code/mneme/search.py                    │
 ├─────────────────────────────────────────────────────────────────┤
 │  1. Embed query                                                  │
 │  2. Vector similarity search                                     │
@@ -50,8 +50,8 @@ This document details the technical implementation of the Session Recall system 
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                     Session Recall Skill                         │
-│  ~/.claude/skills/session-recall/                               │
+│                     Mneme Skill                         │
+│  ~/.claude/skills/mneme/                               │
 ├─────────────────────────────────────────────────────────────────┤
 │  Invoked by Claude Code when user asks about past work          │
 │  Calls search module, formats response                          │
@@ -63,7 +63,7 @@ This document details the technical implementation of the Session Recall system 
 ## Directory Structure
 
 ```
-~/apps/claude-code/session-recall/
+~/apps/claude-code/mneme/
 ├── PRD.md                    # Product requirements
 ├── TECHNICAL_DESIGN.md       # This document
 ├── JSONL_FORMAT.md          # Session file format reference
@@ -351,7 +351,7 @@ import argparse
 from pathlib import Path
 
 def main():
-    parser = argparse.ArgumentParser(description='Session Recall CLI')
+    parser = argparse.ArgumentParser(description='Mneme CLI')
     subparsers = parser.add_subparsers(dest='command')
 
     # Index command
@@ -392,7 +392,7 @@ if __name__ == '__main__':
 
 **`config.yaml`:**
 ```yaml
-# Session Recall Configuration
+# Mneme Configuration
 
 # Session file locations
 sources:
@@ -404,7 +404,7 @@ sources:
 
 # Vector database
 vectordb:
-  path: "~/apps/claude-code/session-recall/data/lance"
+  path: "~/apps/claude-code/mneme/data/lance"
 
 # Embedding model
 embeddings:
@@ -454,7 +454,7 @@ search:
 
 ## Skill Integration
 
-**`~/apps/claude-code/skills/session-recall/SKILL.md`:**
+**`~/apps/claude-code/skills/mneme/SKILL.md`:**
 ```markdown
 ---
 name: recalling-session-history
@@ -462,7 +462,7 @@ description: Search and recall past Claude Code session history. Use when user a
 version: 1.0.0
 ---
 
-# Session Recall
+# Mneme
 
 Search semantic history across all Claude Code sessions to find relevant past work.
 
@@ -477,7 +477,7 @@ Search semantic history across all Claude Code sessions to find relevant past wo
 1. Extract the user's search intent
 2. Run the search command:
    ```bash
-   cd ~/apps/claude-code/session-recall && python -m session_recall.cli search "user's query"
+   cd ~/apps/claude-code/mneme && python -m mneme.cli search "user's query"
    ```
 3. Present the formatted results
 4. Offer to load full session context if needed

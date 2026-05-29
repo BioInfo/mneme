@@ -1,4 +1,4 @@
-"""Local cross-encoder reranking for Session Recall.
+"""Local cross-encoder reranking for Mneme.
 
 First-stage retrieval (vector / fts / hybrid) is recall-oriented: it casts a
 wide net cheaply. A cross-encoder then reads each (query, chunk) pair jointly

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Session Recall is a semantic search system for Claude Code session history. It indexes JSONL session files from `~/.claude/projects/` into a LanceDB vector database, enabling natural-language queries like "what did we work on with LanceDB?"
+Mneme is a semantic search system for Claude Code session history. It indexes JSONL session files from `~/.claude/projects/` into a LanceDB vector database, enabling natural-language queries like "what did we work on with LanceDB?"
 
 **Status:** Phase 1 complete (core infrastructure). Phase 2 pending (skill integration).
 
@@ -39,10 +39,10 @@ source venv/bin/activate  # or: source venv/bin/activate.fish
 pip install -r requirements.txt
 
 # CLI usage
-./venv/bin/python -m session_recall.cli index          # Incremental index
-./venv/bin/python -m session_recall.cli index --full   # Full reindex
-./venv/bin/python -m session_recall.cli search "query" # Search sessions
-./venv/bin/python -m session_recall.cli stats          # Show index stats
+./venv/bin/python -m mneme.cli index          # Incremental index
+./venv/bin/python -m mneme.cli index --full   # Full reindex
+./venv/bin/python -m mneme.cli search "query" # Search sessions
+./venv/bin/python -m mneme.cli stats          # Show index stats
 ```
 
 ## JSONL Parsing Rules

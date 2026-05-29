@@ -1,4 +1,4 @@
-"""Configuration loading for Session Recall."""
+"""Configuration loading for Mneme."""
 
 from pathlib import Path
 from typing import Any

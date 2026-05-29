@@ -24,8 +24,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from session_recall.config import load_config  # noqa: E402
-from session_recall.indexer import SessionVectorDB  # noqa: E402
+from mneme.config import load_config  # noqa: E402
+from mneme.indexer import SessionVectorDB  # noqa: E402
 
 EVAL_DIR = Path(__file__).resolve().parent
 

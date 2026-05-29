@@ -2,7 +2,7 @@
 
 Measure retrieval quality so changes to the embedder, reranker, or chunking are
 judged by numbers instead of guesses. Reports **recall@k** and **MRR** for each
-search mode (`vector`, `fts`, `hybrid`).
+search mode (`vector`, `fts`, `hybrid`, `rerank`).
 
 ## Why
 
@@ -45,12 +45,17 @@ example ship in the repo.
 ```
 mode    R@1    R@5    R@10   MRR     n
 --------------------------------------
-vector  0.42   0.71   0.83   0.55    40
-fts     0.38   0.65   0.74   0.50    40
-hybrid  0.51   0.79   0.88   0.63    40
+vector  0.741  0.889  0.889  0.802   27
+fts     0.630  0.852  0.889  0.720   27
+hybrid  0.704  0.889  0.926  0.788   27
+rerank  0.815  0.926  0.926  0.864   27
 
-best by MRR: hybrid (0.63)
+best by MRR: rerank (0.864)
 ```
+
+See [`results.example.json`](results.example.json) for the full structure of a
+saved baseline (per-mode metrics plus the miss list, which is the most useful
+column when diagnosing what a candidate fails at).
 
 - **recall@k** — fraction of queries whose target session appears in the top *k*.
 - **MRR** — mean reciprocal rank; rewards putting the right session *higher*, not

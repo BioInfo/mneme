@@ -1,8 +1,8 @@
-# Session Recall - Product Requirements Document
+# Mneme - Product Requirements Document
 
 ## Overview
 
-**Product:** Session Recall
+**Product:** Mneme
 **Version:** 1.0
 **Author:** Justin Johnson
 **Created:** 2025-12-19
@@ -65,8 +65,8 @@ A semantic search system for Claude Code session history that enables quick, nat
 - Return: Top-k relevant chunks with session context
 - Include: Session date, summary, matching content excerpts
 
-### FR3: Session Recall Skill
-- Skill file: `~/apps/claude-code/skills/session-recall/skill.md`
+### FR3: Mneme Skill
+- Skill file: `~/apps/claude-code/skills/mneme/skill.md`
 - Invoked when user asks about past work or context
 - Returns formatted results with session IDs for drill-down
 
@@ -91,7 +91,7 @@ A semantic search system for Claude Code session history that enables quick, nat
 
 ### NFR2: Storage
 - Vector database: LanceDB (consistent with Obsidian search)
-- Location: `~/apps/claude-code/session-recall/data/`
+- Location: `~/apps/claude-code/mneme/data/`
 - Separate from Obsidian vectors (different schema)
 
 ### NFR3: Memory Safety
@@ -104,12 +104,12 @@ A semantic search system for Claude Code session history that enables quick, nat
 
 ```
 Session JSONL Files                    Session Vector DB
-~/.claude/projects/**/*.jsonl    →    ~/apps/claude-code/session-recall/data/
+~/.claude/projects/**/*.jsonl    →    ~/apps/claude-code/mneme/data/
 ~/mounts/dgx/.claude/projects/         (LanceDB collection)
 
                     ↓
-            Session Recall Skill
-            ~/.claude/skills/session-recall/
+            Mneme Skill
+            ~/.claude/skills/mneme/
                     ↓
             Natural Language Query
             "What did we do with vectors?"
@@ -124,11 +124,11 @@ Session JSONL Files                    Session Vector DB
 
 | Component | Location | Purpose |
 |-----------|----------|---------|
-| Indexer | `session-recall/indexer.py` | Parse JSONL, create embeddings, store in LanceDB |
-| Vector DB | `session-recall/data/lance/` | LanceDB collection for session vectors |
-| Search API | `session-recall/search.py` | Query interface for the skill |
-| Skill | `skills/session-recall/skill.md` | Claude Code skill definition |
-| Config | `session-recall/config.yaml` | Paths, embedding model, settings |
+| Indexer | `mneme/indexer.py` | Parse JSONL, create embeddings, store in LanceDB |
+| Vector DB | `mneme/data/lance/` | LanceDB collection for session vectors |
+| Search API | `mneme/search.py` | Query interface for the skill |
+| Skill | `skills/mneme/skill.md` | Claude Code skill definition |
+| Config | `mneme/config.yaml` | Paths, embedding model, settings |
 
 ---
 
@@ -198,7 +198,7 @@ Session JSONL Files                    Session Vector DB
 
 ### Response Format
 ```markdown
-## Session Recall: [query]
+## Mneme: [query]
 
 ### Found 3 relevant sessions:
 

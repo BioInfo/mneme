@@ -1,4 +1,4 @@
-# Session Recall Dependencies
+# Mneme Dependencies
 
 # Vector database
 lancedb>=0.4.0

@@ -1,4 +1,4 @@
-"""Command-line interface for Session Recall."""
+"""Command-line interface for Mneme."""
 
 import argparse
 import sys
@@ -8,14 +8,14 @@ from pathlib import Path
 def main():
     """Main CLI entrypoint."""
     parser = argparse.ArgumentParser(
-        description="Session Recall - Search your Claude Code session history",
+        description="Mneme - Search your Claude Code session history",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  session-recall index                    # Incremental index
-  session-recall index --full             # Full reindex
-  session-recall search "LanceDB work"    # Search sessions
-  session-recall stats                    # Show statistics
+  mneme index                    # Incremental index
+  mneme index --full             # Full reindex
+  mneme search "LanceDB work"    # Search sessions
+  mneme stats                    # Show statistics
         """,
     )
 
@@ -147,7 +147,7 @@ def cmd_stats(args):
     state_path = str(Path(db_path).parent / "index_state.json")
     state = IndexState(state_path)
 
-    print("Session Recall Statistics")
+    print("Mneme Statistics")
     print("=" * 40)
     print(f"Database path: {stats['db_path']}")
     print(f"Total chunks:  {stats['total_chunks']}")

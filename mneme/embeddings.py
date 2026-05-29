@@ -1,4 +1,4 @@
-"""Embedding generation for Session Recall."""
+"""Embedding generation for Mneme."""
 
 from typing import List
 import numpy as np

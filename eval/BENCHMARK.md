@@ -34,12 +34,33 @@ building a query set (`make_queryset.py`) and running `run_eval.py`.
   **R@1 +0.111 and MRR +0.076 over hybrid**, the best of every mode. The right
   session is the top hit 81.5% of the time.
 - The reranker cannot beat the recall of its candidate pool. The 2 queries it
-  misses are ones where the target session never enters the top candidates —
-  a first-stage (embedder) limitation, not a reranking one. Upgrading the
-  embedder is the lever for those.
+  misses are ones where the target session never enters the top candidates.
+  Initially this looked like an embedder ceiling; the bge-m3 A/B below shows
+  it isn't (a different embedder misses the same queries). The fix lies in
+  chunking / hierarchical retrieval, not embedder swaps.
 
 ## Takeaway
 
 For quality, `--mode rerank` wins and runs fully locally. The cost is a one-time
 ~560MB model download and added per-query latency from the cross-encoder. For
 lowest latency with no extra model, `hybrid` is the best non-reranked mode.
+
+## A/B: bge-m3 vs nomic-embed-text-v1.5
+
+Re-ran the same query set with `BAAI/bge-m3` (568M params, 1024-dim) replacing
+`nomic-embed-text-v1.5` (137M params, 768-dim). Same reranker, same chunking,
+same corpus. Harness: `experiments/embedder_ab.py`. Full write-up:
+[`../experiments/notes/2026-05-28-bge-m3-vs-nomic.md`](../experiments/notes/2026-05-28-bge-m3-vs-nomic.md).
+
+| mode | bge-m3 R@5 | nomic R@5 | bge-m3 MRR | nomic MRR | delta MRR |
+|------|-----------:|----------:|-----------:|----------:|----------:|
+| vector | 0.778 | **0.889** | 0.651 | **0.802** | −0.151 |
+| fts | 0.852 | 0.852 | 0.691 | **0.720** | −0.029 |
+| hybrid | 0.815 | **0.889** | 0.722 | **0.788** | −0.066 |
+| **rerank** | 0.926 | 0.926 | 0.846 | **0.864** | −0.018 |
+
+**Verdict: keep nomic.** bge-m3 ties recall at rerank but loses MRR everywhere
+and is dramatically worse at vector-only. The reranker absorbs most of the
+embedder gap, so a more expensive embedder doesn't pay back at the top of
+the ladder. Both pipelines miss the same two queries — confirming the
+queries.jsonl / chunking lever, not the embedder lever.

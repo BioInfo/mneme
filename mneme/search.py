@@ -1,4 +1,4 @@
-"""Search API for Session Recall."""
+"""Search API for Mneme."""
 
 from dataclasses import dataclass
 from datetime import datetime

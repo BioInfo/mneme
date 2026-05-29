@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Evaluation harness for Session Recall.
+"""Evaluation harness for Mneme.
 
 Measures retrieval quality (recall@k + MRR) of each search mode against a
 labeled query set, so changes to the embedder, reranker, or chunking are
@@ -32,7 +32,7 @@ from pathlib import Path
 # Make the package importable when run as a standalone script.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from session_recall.search import search_and_group  # noqa: E402
+from mneme.search import search_and_group  # noqa: E402
 
 EVAL_DIR = Path(__file__).resolve().parent
 DEFAULT_QUERYSET = EVAL_DIR / "queries.jsonl"
@@ -127,7 +127,7 @@ def print_table(results: list[dict], k: int) -> None:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Evaluate Session Recall search quality.")
+    ap = argparse.ArgumentParser(description="Evaluate Mneme search quality.")
     ap.add_argument("--queryset", type=Path, default=DEFAULT_QUERYSET)
     ap.add_argument("--modes", nargs="+", choices=MODES, default=list(MODES))
     ap.add_argument("--k", type=int, default=10, help="Retrieval depth (default 10).")

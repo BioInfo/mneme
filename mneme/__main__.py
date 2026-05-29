@@ -1,4 +1,4 @@
-"""Allow running as python -m session_recall."""
+"""Allow running as python -m mneme."""
 
 from .cli import main
 

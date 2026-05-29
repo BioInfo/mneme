@@ -1,4 +1,4 @@
-"""LanceDB indexer for Session Recall."""
+"""LanceDB indexer for Mneme."""
 
 from dataclasses import asdict
 from datetime import datetime

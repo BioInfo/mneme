@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "eval"))
 
-from session_recall.indexer import run_indexer, SessionVectorDB  # noqa: E402
+from mneme.indexer import run_indexer, SessionVectorDB  # noqa: E402
 import run_eval  # noqa: E402  (eval/run_eval.py)
 
 RESULTS_DIR = ROOT / "eval" / "results"

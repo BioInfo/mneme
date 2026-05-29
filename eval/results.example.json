@@ -1,0 +1,67 @@
+{
+  "_comment": "Example of what eval/run_eval.py writes to eval/results/. The real file lives at eval/results/<timestamp>.json and is gitignored — the 'misses' field contains your verbatim queryset strings, which reference your own sessions. Use this file as a format reference when comparing two saved baselines or building visualizations.",
+  "timestamp": "2026-05-26T19:14:07.584187+00:00",
+  "queryset": "queries.jsonl",
+  "k": 10,
+  "config": "config.yaml",
+  "results": [
+    {
+      "mode": "vector",
+      "n": 27,
+      "recall": {
+        "@1": 0.741,
+        "@5": 0.889,
+        "@10": 0.889
+      },
+      "mrr": 0.802,
+      "misses": [
+        "the session where we set up the staging deploy pipeline",
+        "debugging the failing CI run last sprint",
+        "that conversation about prompt caching cost math"
+      ]
+    },
+    {
+      "mode": "fts",
+      "n": 27,
+      "recall": {
+        "@1": 0.630,
+        "@5": 0.852,
+        "@10": 0.889
+      },
+      "mrr": 0.720,
+      "misses": [
+        "rewriting the feature-flag rollout doc",
+        "the session where we set up the staging deploy pipeline",
+        "the dependency-injection refactor we did in march"
+      ]
+    },
+    {
+      "mode": "hybrid",
+      "n": 27,
+      "recall": {
+        "@1": 0.704,
+        "@5": 0.889,
+        "@10": 0.926
+      },
+      "mrr": 0.788,
+      "misses": [
+        "the session where we set up the staging deploy pipeline",
+        "that conversation about prompt caching cost math"
+      ]
+    },
+    {
+      "mode": "rerank",
+      "n": 27,
+      "recall": {
+        "@1": 0.815,
+        "@5": 0.926,
+        "@10": 0.926
+      },
+      "mrr": 0.864,
+      "misses": [
+        "the session where we set up the staging deploy pipeline",
+        "that conversation about prompt caching cost math"
+      ]
+    }
+  ]
+}
