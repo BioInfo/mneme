@@ -18,7 +18,14 @@ embeddings:
 
 # Indexing settings
 indexing:
-  batch_size: 100
+  # Chunks per embed+write cycle. Keep this LARGE. It is not just an embedder
+  # batch: it is also one LanceDB append per cycle, and every append writes a new
+  # fragment plus a manifest listing all previous fragments, so a small value is
+  # quadratic in table size. Measured on a 52,611-file fleet index: batch 100 gave
+  # 2.41 files/sec with 2,376 files in the lance dir and a 5h31m ETA; batch 2000
+  # gave ~29.6 files/sec with 75 files and ~30 min. Same hardware, same data, 12x.
+  # The cost is invisible on a small index, which is why the default was 100.
+  batch_size: 2000
   min_content_length: 20      # Skip very short content
   max_content_length: 2000    # Truncate very long content
   skip_agent_sessions: false  # Include agent-*.jsonl files
