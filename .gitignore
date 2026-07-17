@@ -78,3 +78,6 @@ Thumbs.db
 
 # Jupyter
 .ipynb_checkpoints/
+
+# Tactical session handoff — local working state, not a committed artifact
+.claude/CONTINUITY.md

@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+**Read first at session start:** [`.claude/CONTINUITY.md`](.claude/CONTINUITY.md) — tactical session handoff; update at session end.
+
 ## Project Overview
 
 Mneme is a semantic search system for Claude Code session history. It indexes JSONL session files from `~/.claude/projects/` into a LanceDB vector database, enabling natural-language queries like "what did we work on with LanceDB?"
