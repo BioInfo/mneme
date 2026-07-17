@@ -410,8 +410,17 @@ def run_indexer(
             continue
 
         if not file_chunks:
-            # Mark as indexed even if empty
-            state.set_file_indexed(file_str, file_path.stat().st_mtime, 0)
+            # Mark as indexed even if empty.
+            # stat() can raise here: parse_session_file guards `if not path.exists()`
+            # and returns nothing, so a file that vanished between the listing and
+            # its turn lands in exactly this branch and then gets stat'd unguarded.
+            # Sessions are live files on machines still being used, and a long index
+            # is a wide window, so this is normal, not exceptional. It killed a
+            # 52,611-file run at 40% (2026-07-17).
+            try:
+                state.set_file_indexed(file_str, file_path.stat().st_mtime, 0)
+            except OSError:
+                pass
             continue
 
         # For incremental updates, delete existing chunks from this file first
@@ -431,8 +440,15 @@ def run_indexer(
             # Save state after each batch to survive OOM/crashes
             state.save()
 
-        # Update state
-        state.set_file_indexed(file_str, file_path.stat().st_mtime, len(file_chunks))
+        # Update state. Same guard as the empty-file branch above: the file can
+        # disappear between being parsed and being recorded. Skipping the state
+        # entry just means it is re-examined next run, which is correct and cheap;
+        # crashing the whole index because one live session rotated a transcript is
+        # not.
+        try:
+            state.set_file_indexed(file_str, file_path.stat().st_mtime, len(file_chunks))
+        except OSError:
+            pass
 
     # Process remaining chunks
     if chunks_batch:
