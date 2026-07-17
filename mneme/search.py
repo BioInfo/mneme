@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import List
@@ -89,11 +90,32 @@ class SessionMatch:
     host: str = ""
 
 
+def _host_filter(host: str | None) -> str | None:
+    """Build a WHERE clause restricting results to one machine.
+
+    Pushed into the query, NOT applied afterwards. Post-filtering a top-K cannot
+    work for a minority host: the mini is ~3.6% of the corpus, so the top 80 chunks
+    for any query contain almost no mini rows and a post-filter returns nothing.
+    That reads as "you have no mini sessions about this" while 17,316 mini chunks
+    sit in the table, which is a silent wrong answer rather than a thin one.
+
+    The host is whitelisted to a conservative charset rather than escaped, because
+    this string is interpolated into SQL and the set of real hostnames is small and
+    known.
+    """
+    if not host:
+        return None
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,32}", host):
+        raise ValueError(f"invalid host filter: {host!r}")
+    return f"host = '{host}'"
+
+
 def search_sessions(
     query: str,
     limit: int = 10,
     config_path: str | None = None,
     mode: str = "vector",
+    host: str | None = None,
 ) -> List[SearchResult]:
     """Search for sessions matching the query.
 
@@ -104,17 +126,19 @@ def search_sessions(
         mode: Search mode - "vector" (semantic), "fts" (keyword/BM25),
             "hybrid" (both + RRF), or "rerank" (hybrid recall + local
             cross-encoder reranking)
+        host: Restrict to one machine (mac | dgx | pi | mini)
 
     Returns:
         List of SearchResult objects ordered by relevance
     """
+    fexpr = _host_filter(host)
     config = load_config(config_path)
     emb_cfg = config["embeddings"]
     dimension = emb_cfg.get("dimension", 768)
     db = _get_db(config["vectordb"]["path"], dimension)
 
     if mode == "fts":
-        results = db.search_fts(query, limit=limit)
+        results = db.search_fts(query, limit=limit, filter_expr=fexpr)
         return [_to_result(r, r.get("_score", 0)) for r in results]
 
     # Vector or hybrid mode needs embeddings
@@ -128,7 +152,7 @@ def search_sessions(
     query_vector = embedder.embed_query(query)
 
     if mode == "hybrid":
-        results = db.search_hybrid(query, query_vector.tolist(), limit=limit)
+        results = db.search_hybrid(query, query_vector.tolist(), limit=limit, filter_expr=fexpr)
         return [_to_result(r, r.get("_relevance_score", 0)) for r in results]
 
     if mode == "rerank":
@@ -138,14 +162,14 @@ def search_sessions(
         n_candidates = max(rcfg.get("candidates", 50), limit)
         device = rcfg.get("device") or config["embeddings"].get("device")
         candidates = db.search_hybrid(
-            query, query_vector.tolist(), limit=n_candidates
+            query, query_vector.tolist(), limit=n_candidates, filter_expr=fexpr
         )
         reranker = CrossEncoderReranker(model_name, device=device)
         reranked = reranker.rerank(query, candidates, top_k=limit)
         return [_to_result(r, r.get("rerank_score", 0)) for r in reranked]
 
     # Default: vector search
-    results = db.search(query_vector.tolist(), limit=limit)
+    results = db.search(query_vector.tolist(), limit=limit, filter_expr=fexpr)
     return [_to_result(r, 1 - r.get("_distance", 1)) for r in results]
 
 
@@ -155,6 +179,7 @@ def search_and_group(
     max_sessions: int = 5,
     config_path: str | None = None,
     mode: str = "vector",
+    host: str | None = None,
 ) -> List[SessionMatch]:
     """Search and group results by session.
 
@@ -168,7 +193,7 @@ def search_and_group(
     Returns:
         List of SessionMatch objects with grouped chunks
     """
-    results = search_sessions(query, limit=limit, config_path=config_path, mode=mode)
+    results = search_sessions(query, limit=limit, config_path=config_path, mode=mode, host=host)
 
     if not results:
         return []

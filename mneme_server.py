@@ -128,34 +128,34 @@ async def stats():
 async def search(req: SearchRequest):
     t0 = time.perf_counter()
 
-    # Host filtering is a post-filter, so over-fetch to still return `limit`
-    # rows after the other machines are dropped. Rough but honest: with four
-    # hosts a 4x over-fetch usually suffices, and under-filling is visible in
-    # the returned count rather than silently wrong.
-    fetch = req.limit * 4 if req.host else req.limit
-
+    # Host filtering happens in the query (search.py -> LanceDB .where()), never
+    # after retrieval. This used to over-fetch 4x and post-filter, which silently
+    # returned ZERO results for the mini: it is ~3.6% of the corpus, so the top-N
+    # chunks for any query hold almost no mini rows. "No results" from a table
+    # holding 17,316 mini chunks is a wrong answer, not a thin one.
     try:
         if req.raw:
             results = search_sessions(
-                req.query, limit=fetch, config_path=CONFIG_PATH, mode=req.mode
+                req.query, limit=req.limit, config_path=CONFIG_PATH,
+                mode=req.mode, host=req.host,
             )
-            if req.host:
-                results = [r for r in results if r.host == req.host][: req.limit]
             payload = {"results": [asdict(r) for r in results], "count": len(results)}
         else:
             matches = search_and_group(
                 req.query,
-                limit=fetch,
-                max_sessions=req.sessions if not req.host else req.sessions * 4,
+                limit=req.limit,
+                max_sessions=req.sessions,
                 config_path=CONFIG_PATH,
                 mode=req.mode,
+                host=req.host,
             )
-            if req.host:
-                matches = [m for m in matches if m.host == req.host][: req.sessions]
             payload = {
                 "sessions": [asdict(m) for m in matches],
                 "count": len(matches),
             }
+    except ValueError as e:
+        # bad host filter -> the caller's fault, say so plainly
+        return JSONResponse(status_code=400, content={"status": "error", "detail": str(e)})
     except Exception as e:
         return JSONResponse(
             status_code=500, content={"status": "error", "detail": str(e)}
