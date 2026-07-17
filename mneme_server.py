@@ -59,23 +59,32 @@ def _index_state() -> dict:
         return {}
 
 
-def _host_counts() -> dict[str, int]:
-    """Rows per host. Empty dict if the column or table is unavailable."""
-    try:
-        db = _get_db(
-            _config["vectordb"]["path"], _config["embeddings"].get("dimension", 768)
-        )
-        t = db.table.to_lance()
-        import pyarrow.compute as pc
+EXPECTED_HOSTS = ("mac", "dgx", "pi", "mini")
 
-        col = t.to_table(columns=["host"])["host"]
-        counts = pc.value_counts(col)
-        return {
-            str(x["values"]): int(x["counts"])
-            for x in counts.to_pylist()
-        }
-    except Exception:
+
+def _host_counts() -> dict[str, int]:
+    """Rows per host, via count_rows(filter=...).
+
+    One cheap counting query per host: no pylance dependency (table.to_lance()
+    needs it and it is not installed), and no pulling a 100k+ row column into
+    memory just to tally it.
+
+    Returns {} only when the host column genuinely does not exist, i.e. an index
+    written before that column. Any other failure propagates: /health swallowing
+    a real error here would report "no hosts", which is indistinguishable from a
+    fleet index that has quietly lost three machines.
+    """
+    db = _get_db(
+        _config["vectordb"]["path"], _config["embeddings"].get("dimension", 768)
+    )
+    if "host" not in [f.name for f in db.table.schema]:
         return {}
+    out: dict[str, int] = {}
+    for h in EXPECTED_HOSTS:
+        n = db.table.count_rows(filter=f"host = '{h}'")
+        if n:
+            out[h] = int(n)
+    return out
 
 
 @app.get("/health")
@@ -92,13 +101,13 @@ async def health():
             _config["vectordb"]["path"], _config["embeddings"].get("dimension", 768)
         ).get_stats()
         chunks = int(stats.get("total_chunks", 0))
+        hosts = _host_counts()
     except Exception as e:
         return JSONResponse(
             status_code=503,
             content={"status": "error", "detail": f"index unreadable: {e}"},
         )
 
-    hosts = _host_counts()
     if chunks == 0:
         return JSONResponse(
             status_code=503,
