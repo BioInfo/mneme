@@ -7,10 +7,20 @@ pyarrow>=14.0.0
 # Embeddings
 sentence-transformers>=2.2.0
 torch>=2.0.0
+# nomic-embed-text-v1.5 loads via trust_remote_code and imports einops at model
+# load. It was never listed here, so it only ever worked in venvs where someone
+# had installed it by hand; a clean build from this file raised ImportError.
+einops>=0.7.0
 
 # Utilities
 pyyaml>=6.0
 tqdm>=4.65.0
+
+# HTTP API (mneme_server.py) — how every machine other than the DGX reaches
+# the index. Only needed on the host that serves it.
+fastapi>=0.110.0
+uvicorn>=0.27.0
+pydantic>=2.0
 
 # Optional: for faster inference
 # accelerate>=0.24.0

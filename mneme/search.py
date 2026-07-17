@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime
+from functools import lru_cache
 from pathlib import Path
 from typing import List
 
@@ -22,6 +23,56 @@ class SearchResult:
     chunk_type: str
     content: str
     similarity: float
+    host: str = ""
+
+
+@lru_cache(maxsize=4)
+def _get_db(path: str, dimension: int) -> SessionVectorDB:
+    """Reuse the DB handle across calls."""
+    return SessionVectorDB(path, dimension=dimension)
+
+
+@lru_cache(maxsize=4)
+def _get_embedder(
+    model_name: str,
+    device: str | None,
+    dimension: int,
+    doc_prefix: str,
+    query_prefix: str,
+) -> EmbeddingModel:
+    """Reuse the embedder across calls.
+
+    EmbeddingModel loads its weights lazily and per-instance, so a fresh
+    instance per search means re-loading ~560MB every time. A one-shot CLI
+    never noticed; a long-lived HTTP server would do it on every request.
+    Mirrors the lru_cache already used for the cross-encoder in rerank.py.
+    """
+    return EmbeddingModel(
+        model_name=model_name,
+        device=device,
+        dimension=dimension,
+        doc_prefix=doc_prefix,
+        query_prefix=query_prefix,
+    )
+
+
+def _to_result(r: dict, similarity: float) -> SearchResult:
+    """Map a raw DB row to a SearchResult.
+
+    Every search mode builds results the same way and differs only in which
+    score field it reads, so the mapping lives here once. Adding a column in
+    four places is how one of them ends up forgotten.
+    """
+    return SearchResult(
+        session_id=r.get("session_id", ""),
+        session_file=r.get("session_file", ""),
+        project_path=r.get("project_path", ""),
+        timestamp=r.get("timestamp", datetime.now()),
+        chunk_type=r.get("chunk_type", ""),
+        content=r.get("content", ""),
+        similarity=similarity,
+        host=r.get("host", ""),
+    )
 
 
 @dataclass
@@ -35,6 +86,7 @@ class SessionMatch:
     best_similarity: float
     summary: str | None
     chunks: List[SearchResult]
+    host: str = ""
 
 
 def search_sessions(
@@ -59,47 +111,25 @@ def search_sessions(
     config = load_config(config_path)
     emb_cfg = config["embeddings"]
     dimension = emb_cfg.get("dimension", 768)
-    db = SessionVectorDB(config["vectordb"]["path"], dimension=dimension)
+    db = _get_db(config["vectordb"]["path"], dimension)
 
     if mode == "fts":
         results = db.search_fts(query, limit=limit)
-        return [
-            SearchResult(
-                session_id=r.get("session_id", ""),
-                session_file=r.get("session_file", ""),
-                project_path=r.get("project_path", ""),
-                timestamp=r.get("timestamp", datetime.now()),
-                chunk_type=r.get("chunk_type", ""),
-                content=r.get("content", ""),
-                similarity=r.get("_score", 0),
-            )
-            for r in results
-        ]
+        return [_to_result(r, r.get("_score", 0)) for r in results]
 
     # Vector or hybrid mode needs embeddings
-    embedder = EmbeddingModel(
-        model_name=emb_cfg["model"],
-        device=emb_cfg.get("device"),
-        dimension=dimension,
-        doc_prefix=emb_cfg.get("doc_prefix", "search_document: "),
-        query_prefix=emb_cfg.get("query_prefix", "search_query: "),
+    embedder = _get_embedder(
+        emb_cfg["model"],
+        emb_cfg.get("device"),
+        dimension,
+        emb_cfg.get("doc_prefix", "search_document: "),
+        emb_cfg.get("query_prefix", "search_query: "),
     )
     query_vector = embedder.embed_query(query)
 
     if mode == "hybrid":
         results = db.search_hybrid(query, query_vector.tolist(), limit=limit)
-        return [
-            SearchResult(
-                session_id=r.get("session_id", ""),
-                session_file=r.get("session_file", ""),
-                project_path=r.get("project_path", ""),
-                timestamp=r.get("timestamp", datetime.now()),
-                chunk_type=r.get("chunk_type", ""),
-                content=r.get("content", ""),
-                similarity=r.get("_relevance_score", 0),
-            )
-            for r in results
-        ]
+        return [_to_result(r, r.get("_relevance_score", 0)) for r in results]
 
     if mode == "rerank":
         # Stage 1: wide hybrid recall. Stage 2: local cross-encoder reorders.
@@ -112,33 +142,11 @@ def search_sessions(
         )
         reranker = CrossEncoderReranker(model_name, device=device)
         reranked = reranker.rerank(query, candidates, top_k=limit)
-        return [
-            SearchResult(
-                session_id=r.get("session_id", ""),
-                session_file=r.get("session_file", ""),
-                project_path=r.get("project_path", ""),
-                timestamp=r.get("timestamp", datetime.now()),
-                chunk_type=r.get("chunk_type", ""),
-                content=r.get("content", ""),
-                similarity=r.get("rerank_score", 0),
-            )
-            for r in reranked
-        ]
+        return [_to_result(r, r.get("rerank_score", 0)) for r in reranked]
 
     # Default: vector search
     results = db.search(query_vector.tolist(), limit=limit)
-    return [
-        SearchResult(
-            session_id=r.get("session_id", ""),
-            session_file=r.get("session_file", ""),
-            project_path=r.get("project_path", ""),
-            timestamp=r.get("timestamp", datetime.now()),
-            chunk_type=r.get("chunk_type", ""),
-            content=r.get("content", ""),
-            similarity=1 - r.get("_distance", 1),
-        )
-        for r in results
-    ]
+    return [_to_result(r, 1 - r.get("_distance", 1)) for r in results]
 
 
 def search_and_group(
@@ -180,6 +188,7 @@ def search_and_group(
                 best_similarity=r.similarity,
                 summary=None,
                 chunks=[],
+                host=r.host,
             )
 
         match = sessions[key]
@@ -273,7 +282,10 @@ def format_sessions(sessions: List[SessionMatch], max_content: int = 300) -> str
         if project.startswith(home):
             project = "~" + project[len(home):]
 
-        lines.append(f"### {i}. {date_str} - {project}")
+        # Host matters in a fleet index: the same project path exists on more
+        # than one machine, so "~/foo" alone does not say where this ran.
+        where = f"{session.host}:{project}" if session.host else project
+        lines.append(f"### {i}. {date_str} - {where}")
         lines.append(f"Similarity: {session.best_similarity:.2f}")
 
         # Show summary or best chunk

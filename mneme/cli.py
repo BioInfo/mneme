@@ -95,14 +95,22 @@ Examples:
 
 def cmd_index(args):
     """Run the indexer."""
-    from .indexer import run_indexer
+    import sys
+
+    from .indexer import SourceError, run_indexer
 
     print("Starting indexer...")
-    run_indexer(
-        config_path=args.config,
-        full=args.full,
-        source_path=args.path,
-    )
+    try:
+        run_indexer(
+            config_path=args.config,
+            full=args.full,
+            source_path=args.path,
+        )
+    except SourceError as e:
+        # Exit non-zero so a scheduled run withholds its heartbeat instead of
+        # reporting success over a partial index.
+        print(f"\nINDEX FAILED: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 def cmd_search(args):

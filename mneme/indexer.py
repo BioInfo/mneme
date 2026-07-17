@@ -17,6 +17,14 @@ from .embeddings import EmbeddingModel
 from .parser import SessionChunk, discover_session_files, parse_session_file
 
 
+class SourceError(RuntimeError):
+    """A required config source is missing or empty.
+
+    Raised so the indexer exits non-zero instead of quietly indexing a subset
+    of the fleet and reporting success.
+    """
+
+
 class SessionVectorDB:
     """Vector database for session chunks using LanceDB."""
 
@@ -45,6 +53,7 @@ class SessionVectorDB:
             pa.field("timestamp", pa.timestamp("us", tz="UTC")),
             pa.field("chunk_type", pa.string()),
             pa.field("content", pa.string()),
+            pa.field("host", pa.string()),
             pa.field("vector", pa.list_(pa.float32(), self.dimension)),
         ])
 
@@ -316,28 +325,55 @@ def run_indexer(
     min_length = indexing_config.get("min_content_length", 20)
     max_length = indexing_config.get("max_content_length", 2000)
 
-    # Collect files to process
-    files_to_process = []
+    # (path, host) pairs. The host has to survive all the way to the parse call:
+    # drop it here and every row lands with an empty host, which is the whole
+    # reason a fleet index can't tell one machine's sessions from another's.
+    files_to_process: list[tuple[Path, str]] = []
     sources = config.get("sources", [])
 
     if source_path:
         # Index specific path
         sources = [{"path": source_path, "name": "specified", "optional": False}]
 
+    # A missing REQUIRED source used to print "Warning:" and continue, exactly
+    # like an optional one. Nothing raised, exit stayed 0. That is how the mac
+    # indexed zero DGX sessions for months and never once said so. A required
+    # source that isn't there, or that yields nothing, is now a hard failure.
+    failures: list[str] = []
+
     for source in sources:
         path = source["path"]
-        if not Path(path).exists():
-            if source.get("optional", False):
-                print(f"Skipping optional source (not found): {path}")
-                continue
-            else:
-                print(f"Warning: Source not found: {path}")
-                continue
+        host = source.get("name", "")
+        optional = source.get("optional", False)
 
+        if not Path(path).exists():
+            if optional:
+                print(f"Skipping optional source (not found): {path}")
+            else:
+                failures.append(f"required source not found: {path} (name={host!r})")
+            continue
+
+        found = 0
         for jsonl_file in discover_session_files(path):
+            found += 1
             file_str = str(jsonl_file)
             if full or state.needs_reindex(file_str):
-                files_to_process.append(jsonl_file)
+                files_to_process.append((jsonl_file, host))
+
+        print(f"Source {host or '(unnamed)'}: {found} session files under {path}")
+        if found == 0 and not optional:
+            failures.append(
+                f"required source yielded 0 session files: {path} (name={host!r})"
+            )
+
+    if failures:
+        for f in failures:
+            print(f"ERROR: {f}")
+        raise SourceError(
+            f"{len(failures)} required source(s) unusable; refusing to index a "
+            "partial fleet. Fix the source(s) above, or mark them optional if "
+            "their absence is genuinely acceptable."
+        )
 
     if not files_to_process:
         print("No files need indexing.")
@@ -355,7 +391,7 @@ def run_indexer(
     total_chunks = 0
     chunks_batch = []
 
-    for file_path in tqdm(files_to_process, desc="Processing files"):
+    for file_path, host in tqdm(files_to_process, desc="Processing files"):
         file_str = str(file_path)
         file_chunks = []
 
@@ -365,6 +401,7 @@ def run_indexer(
                 file_str,
                 min_content_length=min_length,
                 max_content_length=max_length,
+                host=host,
             ):
                 file_chunks.append(chunk)
 
@@ -450,6 +487,7 @@ def _index_batch(
             "timestamp": ts,
             "chunk_type": chunk.chunk_type,
             "content": chunk.content,
+            "host": chunk.host,
             "vector": vector.tolist() if hasattr(vector, "tolist") else list(vector),
         })
 

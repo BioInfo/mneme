@@ -19,6 +19,10 @@ class SessionChunk:
     chunk_type: str  # "summary" | "user" | "assistant"
     content: str
     message_id: str | None = None
+    # Which machine the session came from. Set from the config source's `name`.
+    # project_path alone cannot identify a host: it is decoded from the parent
+    # dir name, so /Users/bioinfo/foo on the mac and on the mini collide.
+    host: str = ""
 
 
 def extract_project_from_path(file_path: str) -> str:
@@ -82,6 +86,7 @@ def parse_session_file(
     file_path: str,
     min_content_length: int = 20,
     max_content_length: int = 2000,
+    host: str = "",
 ) -> Iterator[SessionChunk]:
     """Parse a session JSONL file and yield indexable chunks.
 
@@ -89,6 +94,7 @@ def parse_session_file(
         file_path: Path to the JSONL session file
         min_content_length: Minimum content length to include
         max_content_length: Maximum content length (truncates longer)
+        host: Machine the session came from (the config source's `name`)
 
     Yields:
         SessionChunk objects for each indexable piece of content
@@ -123,6 +129,7 @@ def parse_session_file(
                         timestamp=datetime.now(),
                         chunk_type="summary",
                         content=summary[:max_content_length],
+                        host=host,
                     )
 
             # User messages
@@ -139,6 +146,7 @@ def parse_session_file(
                         chunk_type="user",
                         content=content[:max_content_length],
                         message_id=record.get("uuid"),
+                        host=host,
                     )
 
             # Assistant text responses
@@ -165,6 +173,7 @@ def parse_session_file(
                                 chunk_type="assistant",
                                 content=text[:max_content_length],
                                 message_id=record.get("uuid"),
+                                host=host,
                             )
 
 
