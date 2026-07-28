@@ -70,6 +70,24 @@ class SessionVectorDB:
             self._table = self.db.open_table(self.TABLE_NAME)
         return self._table
 
+    def refresh(self):
+        """Re-point the cached handle at the newest committed table version.
+
+        An open LanceTable pins the dataset version it was opened at, so a
+        long-lived reader never sees rows a *separate* writer process commits
+        afterwards. That is invisible rather than broken: the API keeps
+        answering, just from a frozen snapshot. mneme-api.service ran for three
+        days on 2026-07-25..28 serving 504,029 rows while the hourly indexer had
+        grown the table to 509,874, and /health looked fine the whole time
+        because its freshness fields are read from index_state.json on disk
+        while its row count came from the stale handle.
+
+        Cheap (a manifest read), so read paths call it per request. A one-shot
+        CLI does not need it; a server does.
+        """
+        if self._table is not None:
+            self._table.checkout_latest()
+
     def add_chunks(self, chunks: list[dict[str, Any]]):
         """Add chunks to the database.
 

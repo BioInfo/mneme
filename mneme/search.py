@@ -28,9 +28,22 @@ class SearchResult:
 
 
 @lru_cache(maxsize=4)
-def _get_db(path: str, dimension: int) -> SessionVectorDB:
+def _open_db(path: str, dimension: int) -> SessionVectorDB:
     """Reuse the DB handle across calls."""
     return SessionVectorDB(path, dimension=dimension)
+
+
+def _get_db(path: str, dimension: int) -> SessionVectorDB:
+    """Cached handle, re-pointed at the newest committed table version.
+
+    The cache is what makes the refresh necessary: an open LanceTable pins the
+    version it was opened at, so without this a long-lived reader answers from
+    whatever the table held when the process started, forever, with no error.
+    See SessionVectorDB.refresh for the incident.
+    """
+    db = _open_db(path, dimension)
+    db.refresh()
+    return db
 
 
 @lru_cache(maxsize=4)
