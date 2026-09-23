@@ -48,10 +48,31 @@ class EmbeddingModel:
                 else:
                     self._device = "cpu"
 
+            # Load on CPU, then move. sentence-transformers otherwise picks CUDA inside
+            # its own constructor, and an OOM there escapes the fallback below.
             self._model = SentenceTransformer(
-                self.model_name, trust_remote_code=True
+                self.model_name, trust_remote_code=True, device="cpu"
             )
-            self._model.to(self._device)
+            try:
+                self._model.to(self._device)
+            except Exception as e:
+                # GB10 unified memory: co-tenant GPU jobs (vLLM, ollama) can
+                # squeeze the pool and make the device load fail with OOM.
+                # Fall back to CPU so indexing degrades instead of dying.
+                import torch
+                if self._device != "cpu" and (
+                    "out of memory" in str(e).lower()
+                    or "oom" in str(e).lower()
+                    or isinstance(e, torch.cuda.OutOfMemoryError)
+                ):
+                    import logging
+                    logging.getLogger(__name__).warning(
+                        "CUDA load failed (%s); falling back to CPU", e
+                    )
+                    self._device = "cpu"
+                    self._model.to("cpu")
+                else:
+                    raise
 
         return self._model
 
@@ -77,13 +98,35 @@ class EmbeddingModel:
 
         # Apply the model's document instruction prefix (empty for bge-m3 etc.)
         prefixed = [f"{self.doc_prefix}{t}" for t in texts]
-        embeddings = self.model.encode(
-            prefixed,
-            batch_size=batch_size,
-            show_progress_bar=len(texts) > 100,
-            convert_to_numpy=True,
-        )
-        return embeddings
+        try:
+            return self.model.encode(
+                prefixed,
+                batch_size=batch_size,
+                show_progress_bar=len(texts) > 100,
+                convert_to_numpy=True,
+            )
+        except Exception as e:
+            # Mid-encode OOM under GPU contention: clear cache, halve the
+            # batch once, then fall back to a CPU copy as a last resort.
+            import torch
+            oom = "out of memory" in str(e).lower() or isinstance(
+                e, getattr(torch.cuda, "OutOfMemoryError", ())
+            )
+            if not oom:
+                raise
+            import logging
+            logging.getLogger(__name__).warning(
+                "CUDA encode OOM (%s); retrying on CPU", e
+            )
+            torch.cuda.empty_cache()
+            cpu_model = self.model.to("cpu")
+            self._device = "cpu"
+            return cpu_model.encode(
+                prefixed,
+                batch_size=max(batch_size // 2, 8),
+                show_progress_bar=len(texts) > 100,
+                convert_to_numpy=True,
+            )
 
     def embed_query(self, query: str) -> np.ndarray:
         """Generate embedding for a search query.

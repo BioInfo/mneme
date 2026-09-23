@@ -491,6 +491,13 @@ def run_indexer(
     print("Building FTS index...")
     db.create_fts_index()
 
+    # Every append writes a new table version and fragment, and nothing prunes them:
+    # by 2026-09-23 the DGX table was 149 GB across 513,045 versions for 2 GB of data.
+    # run_indexer is the only writer, so pruning everything but the latest is safe.
+    print("Compacting table (merge fragments, prune old versions)...")
+    from datetime import timedelta
+    db.table.optimize(cleanup_older_than=timedelta(seconds=0), delete_unverified=True)
+
 
 def _index_batch(
     chunks: list[SessionChunk],
