@@ -264,8 +264,15 @@ def search_and_group(
     Returns:
         List of SessionMatch objects with grouped chunks
     """
+    # Group over every reranked candidate, not just the top `limit` chunks. With
+    # the recency boost a single long recent session can fill all 20 chunk slots
+    # and the caller gets 1 session when it asked for 5. The rerank already scored
+    # all candidates, so this costs nothing, and since sessions rank by their best
+    # chunk, the top sessions are the same whenever `limit` already held enough.
+    fetch = max(limit, load_config(config_path).get("rerank", {}).get("candidates", 50)) \
+        if mode == "rerank" else limit
     results = search_sessions(
-        query, limit=limit, config_path=config_path, mode=mode, host=host,
+        query, limit=fetch, config_path=config_path, mode=mode, host=host,
         recency=recency, now=now,
     )
 
