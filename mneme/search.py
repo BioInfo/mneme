@@ -1,7 +1,7 @@
 """Search API for Mneme."""
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -43,6 +43,17 @@ RECENCY_MODES = ("recent", "history", "any")
 RECENCY_W = 0.3
 RECENCY_SCALE_DAYS = 30.0
 RECENCY_FLOOR = 0.1
+# recency=recent adds a second hybrid leg over the last RECENT_WINDOW_DAYS: a generic query
+# otherwise fills all candidate slots with older sessions, and the recency boost never sees
+# the new one (measured 2026-10-09: "how do we generate images with gemini" -> 50 January hits).
+RECENT_WINDOW_DAYS = 30
+RECENT_CANDIDATES = 20
+
+
+def merge_candidates(primary: list[dict], extra: list[dict]) -> list[dict]:
+    """Union by chunk id, primary order first."""
+    seen = {r.get("id") for r in primary}
+    return primary + [r for r in extra if r.get("id") not in seen]
 HISTORY_W = 0.1
 
 
@@ -225,6 +236,13 @@ def search_sessions(
         candidates = db.search_hybrid(
             query, query_vector.tolist(), limit=n_candidates, filter_expr=fexpr
         )
+        n_recent = rcfg.get("recent_candidates", RECENT_CANDIDATES)
+        if recency == "recent" and n_recent > 0:
+            now = now or datetime.now(timezone.utc)
+            cut = (now - timedelta(days=RECENT_WINDOW_DAYS)).strftime("%Y-%m-%d %H:%M:%S")
+            rexpr = f"timestamp >= timestamp '{cut}'" + (f" AND ({fexpr})" if fexpr else "")
+            candidates = merge_candidates(candidates, db.search_hybrid(
+                query, query_vector.tolist(), limit=n_recent, filter_expr=rexpr))
         reranker = CrossEncoderReranker(model_name, device=device)
         scored = reranker.score(query, candidates)
         now = now or datetime.now(timezone.utc)
