@@ -1,5 +1,6 @@
 """Configuration loading for Mneme."""
 
+import os
 from pathlib import Path
 from typing import Any
 import yaml
@@ -24,5 +25,13 @@ def load_config(config_path: str | None = None) -> dict[str, Any]:
         config["vectordb"]["path"] = str(
             Path(config["vectordb"]["path"]).expanduser()
         )
+
+    # Per-process device overrides, so the API can run the reranker on CUDA and
+    # the embedder on CPU while the hourly indexer, same config file, keeps CUDA
+    # for bulk embedding. Set in the mneme-api unit, nowhere else.
+    if os.environ.get("MNEME_EMBED_DEVICE"):
+        config.setdefault("embeddings", {})["device"] = os.environ["MNEME_EMBED_DEVICE"]
+    if os.environ.get("MNEME_RERANK_DEVICE"):
+        config.setdefault("rerank", {})["device"] = os.environ["MNEME_RERANK_DEVICE"]
 
     return config

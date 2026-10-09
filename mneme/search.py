@@ -1,7 +1,7 @@
 """Search API for Mneme."""
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -25,6 +25,48 @@ class SearchResult:
     content: str
     similarity: float
     host: str = ""
+    relevance: float | None = None  # raw cross-encoder score, before recency
+
+
+# Recency. A session index has no notion of "current": the 2026-05-09 decision to
+# host artifacts on the Pi outranked the 2026-10-04 session that replaced it,
+# because both are equally relevant to the words. Post-rerank:
+#   recent  score = rerank + W * gauss(age)      (default; current-state calls)
+#   history score = rerank + H * (1 - gauss(age)) ("when did we first...")
+#   any     score = rerank                        (pure relevance)
+# gauss(age) = 0.5 ** ((age_days / SCALE) ** 2): 1.0 today, 0.5 at SCALE days.
+# The boost needs rerank >= FLOOR, so an irrelevant chunk cannot ride its date.
+# Tuned on ~/scripts/mneme-eval (17 current-state + 6 history queries,
+# 2026-10-09): recent R@1 0.41 -> 0.76, history hit@5 held at 1.00. Only the
+# rerank mode carries a calibrated 0..1 score, so the other modes ignore it.
+RECENCY_MODES = ("recent", "history", "any")
+RECENCY_W = 0.3
+RECENCY_SCALE_DAYS = 30.0
+RECENCY_FLOOR = 0.1
+HISTORY_W = 0.1
+
+
+def _age_days(ts, now: datetime) -> float:
+    if not isinstance(ts, datetime):
+        return 0.0
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return max((now - ts).total_seconds() / 86400.0, 0.0)
+
+
+def recency_score(
+    relevance: float, age_days: float, recency: str,
+    w: float = RECENCY_W, scale: float = RECENCY_SCALE_DAYS,
+) -> float:
+    """Combine a 0..1 rerank score with session age per the recency mode."""
+    if recency not in RECENCY_MODES:
+        raise ValueError(f"invalid recency: {recency!r} (recent | history | any)")
+    g = 0.5 ** ((age_days / scale) ** 2) if scale > 0 else 0.0
+    if recency == "recent":
+        return relevance + (w * g if relevance >= RECENCY_FLOOR else 0.0)
+    if recency == "history":
+        return relevance + HISTORY_W * (1.0 - g)
+    return relevance
 
 
 @lru_cache(maxsize=4)
@@ -129,6 +171,8 @@ def search_sessions(
     config_path: str | None = None,
     mode: str = "vector",
     host: str | None = None,
+    recency: str = "recent",
+    now: datetime | None = None,
 ) -> List[SearchResult]:
     """Search for sessions matching the query.
 
@@ -140,11 +184,15 @@ def search_sessions(
             "hybrid" (both + RRF), or "rerank" (hybrid recall + local
             cross-encoder reranking)
         host: Restrict to one machine (mac | dgx | pi | mini)
+        recency: recent | history | any (rerank mode only; see RECENCY_W)
+        now: reference time for session age (default: current UTC)
 
     Returns:
         List of SearchResult objects ordered by relevance
     """
     fexpr = _host_filter(host)
+    if recency not in RECENCY_MODES:
+        raise ValueError(f"invalid recency: {recency!r} (recent | history | any)")
     config = load_config(config_path)
     emb_cfg = config["embeddings"]
     dimension = emb_cfg.get("dimension", 768)
@@ -178,8 +226,16 @@ def search_sessions(
             query, query_vector.tolist(), limit=n_candidates, filter_expr=fexpr
         )
         reranker = CrossEncoderReranker(model_name, device=device)
-        reranked = reranker.rerank(query, candidates, top_k=limit)
-        return [_to_result(r, r.get("rerank_score", 0)) for r in reranked]
+        scored = reranker.score(query, candidates)
+        now = now or datetime.now(timezone.utc)
+        out = []
+        for r in scored:
+            rel = r.get("rerank_score", 0.0)
+            res = _to_result(r, recency_score(rel, _age_days(r.get("timestamp"), now), recency))
+            res.relevance = rel
+            out.append(res)
+        out.sort(key=lambda x: x.similarity, reverse=True)
+        return out[:limit]
 
     # Default: vector search
     results = db.search(query_vector.tolist(), limit=limit, filter_expr=fexpr)
@@ -193,6 +249,8 @@ def search_and_group(
     config_path: str | None = None,
     mode: str = "vector",
     host: str | None = None,
+    recency: str = "recent",
+    now: datetime | None = None,
 ) -> List[SessionMatch]:
     """Search and group results by session.
 
@@ -206,7 +264,10 @@ def search_and_group(
     Returns:
         List of SessionMatch objects with grouped chunks
     """
-    results = search_sessions(query, limit=limit, config_path=config_path, mode=mode, host=host)
+    results = search_sessions(
+        query, limit=limit, config_path=config_path, mode=mode, host=host,
+        recency=recency, now=now,
+    )
 
     if not results:
         return []

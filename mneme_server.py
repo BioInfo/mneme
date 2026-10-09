@@ -42,6 +42,10 @@ class SearchRequest(BaseModel):
         None, description="restrict to one machine: mac | dgx | pi | mini"
     )
     raw: bool = Field(False, description="flat chunk list instead of grouped")
+    recency: str = Field(
+        "recent",
+        description="recent (boost new sessions, default) | history (favour older) | any",
+    )
 
 
 def _index_state() -> dict:
@@ -137,7 +141,7 @@ async def search(req: SearchRequest):
         if req.raw:
             results = search_sessions(
                 req.query, limit=req.limit, config_path=CONFIG_PATH,
-                mode=req.mode, host=req.host,
+                mode=req.mode, host=req.host, recency=req.recency,
             )
             payload = {"results": [asdict(r) for r in results], "count": len(results)}
         else:
@@ -148,6 +152,7 @@ async def search(req: SearchRequest):
                 config_path=CONFIG_PATH,
                 mode=req.mode,
                 host=req.host,
+                recency=req.recency,
             )
             payload = {
                 "sessions": [asdict(m) for m in matches],
@@ -163,6 +168,7 @@ async def search(req: SearchRequest):
 
     payload["elapsed_ms"] = round((time.perf_counter() - t0) * 1000, 1)
     payload["mode"] = req.mode
+    payload["recency"] = req.recency
     if req.host:
         payload["host_filter"] = req.host
     return payload
@@ -184,7 +190,16 @@ async def startup():
         emb.get("query_prefix", "search_query: "),
     )
     embedder.embed_query("warmup")
-    print(f"[mneme-api] warm: embedder on {embedder._device}", flush=True)
+    # Warm the cross-encoder too: its first load is ~3.5s, paid by whichever
+    # caller happened to arrive first.
+    from mneme.rerank import CrossEncoderReranker
+
+    rcfg = _config.get("rerank", {})
+    rdev = rcfg.get("device") or emb.get("device")
+    CrossEncoderReranker(
+        rcfg.get("model", "BAAI/bge-reranker-v2-m3"), device=rdev
+    ).score("warmup", [{"content": "warmup"}])
+    print(f"[mneme-api] warm: embedder on {embedder._device}, reranker on {rdev}", flush=True)
 
 
 def main():
